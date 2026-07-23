@@ -90,7 +90,10 @@ jobs:
           NORDVPN_TOKEN: ${{ secrets.NORDVPN_TOKEN }}
         run: |
           set -euo pipefail
+          # Stable hostname: every CI run shows up as this same Meshnet
+          # device instead of registering a new random peer each time
           docker run -d --name smoke \
+            --hostname github-ci-smoke \
             --cap-add NET_ADMIN --cap-add NET_RAW \
             -e NORDVPN_TOKEN \
             smoke-test:local
@@ -114,7 +117,9 @@ jobs:
 
       - name: Deregister test device
         if: always()
-        run: docker exec smoke nordvpn logout --persist-token || true
+        run: |
+          docker exec smoke nordvpn set meshnet off || true
+          docker exec smoke nordvpn logout --persist-token || true
 
   build-push:
     runs-on: ubuntu-latest
