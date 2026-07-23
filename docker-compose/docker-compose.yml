@@ -6,7 +6,13 @@ services:
       - NET_ADMIN
       - NET_RAW
     env_file: .env
-    hostname: meshnet    # Make sure hostname is set! Without it, every restart will add a new peer to your Meshnet.
+    # NOTE: hostname must be DIFFERENT from NORDVPN_NICKNAME, or the client
+    # rejects the nickname ("a domain with this name already exists").
+    hostname: meshnet
+    volumes:
+      # Persists the NordVPN device identity: without this, every container
+      # recreation registers a brand-new peer on your Meshnet.
+      - nordvpn-data:/var/lib/nordvpn
     labels:
       - com.centurylinklabs.watchtower.enable=true
 
@@ -21,3 +27,6 @@ services:
       - WATCHTOWER_LABEL_ENABLE=true
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_POLL_INTERVAL=86400
+
+volumes:
+  nordvpn-data:

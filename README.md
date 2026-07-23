@@ -65,7 +65,10 @@ Peers must be entered with their FQDN/Name assigned by Meshnet, comma separated,
 - `NORDVPN_ALLOW_PEER_REMOTE` - Allow peers to use remote access on this node.
 
 ### Deployment - docker-compose
-An example `docker-compose.yml` has been supplied to easily deploy the Meshnet node. There is one specific piece of configuration, which is the `hostname`. Without configuring a `hostname`, every restart of the container will show as a new node within the Meshnet. Having a `hostname` configured will make sure the node is remembered/recognized.
+An example `docker-compose.yml` has been supplied to easily deploy the Meshnet node. Two pieces of configuration matter for keeping a stable identity on your Meshnet:
+
+- **Persist `/var/lib/nordvpn`** (the example uses a named volume). The NordVPN client stores its device identity there; without it, every container recreation registers a brand-new peer on your Meshnet and orphans the old one.
+- **`hostname` must be set, and must be different from `NORDVPN_NICKNAME`** — the client rejects a nickname equal to the machine's own hostname with "a domain with this name already exists".
 
 NordVPN and Meshnet functionality require permissions to create a tunnel interface within the container. The container will require both capabilities `NET_ADMIN` and `NET_RAW`.
 
