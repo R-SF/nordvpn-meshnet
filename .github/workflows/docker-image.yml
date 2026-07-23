@@ -41,32 +41,30 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Latest NordVPN client: $VERSION"
 
-          # Everything except the weekly check builds unconditionally
+          # Returns success only if this version is already on GHCR; any
+          # failure to check (e.g. package does not exist yet) means "build"
+          published() {
+            local image token status
+            image=$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')
+            token=$(curl -sSL "https://ghcr.io/token?scope=repository:${image}:pull" | jq -r '.token // empty' || true)
+            [ -n "$token" ] || return 1
+            status=$(curl -s -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer ${token}" \
+              -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
+              "https://ghcr.io/v2/${image}/manifests/${VERSION}" || echo 000)
+            [ "$status" = "200" ]
+          }
+
+          # Everything except the weekly check and un-forced manual runs
+          # builds unconditionally
           BUILD=true
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "0 6 * * 1" ]; then
-            # Weekly check: skip if this version is already published on GHCR
-            IMAGE=$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')
-            TOKEN=$(curl -fsSL "https://ghcr.io/token?scope=repository:${IMAGE}:pull" | jq -r .token)
-            STATUS=$(curl -s -o /dev/null -w '%{http_code}' \
-              -H "Authorization: Bearer ${TOKEN}" \
-              -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
-              "https://ghcr.io/v2/${IMAGE}/manifests/${VERSION}")
-            if [ "$STATUS" = "200" ]; then
-              BUILD=false
-              echo "Version ${VERSION} already published, skipping build."
-            fi
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "0 6 * * 1" ] && published; then
+            BUILD=false
+            echo "Version ${VERSION} already published, skipping build."
           fi
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" != "true" ]; then
-            IMAGE=$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')
-            TOKEN=$(curl -fsSL "https://ghcr.io/token?scope=repository:${IMAGE}:pull" | jq -r .token)
-            STATUS=$(curl -s -o /dev/null -w '%{http_code}' \
-              -H "Authorization: Bearer ${TOKEN}" \
-              -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
-              "https://ghcr.io/v2/${IMAGE}/manifests/${VERSION}")
-            if [ "$STATUS" = "200" ]; then
-              BUILD=false
-              echo "Version ${VERSION} already published, skipping build (use force to override)."
-            fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" != "true" ] && published; then
+            BUILD=false
+            echo "Version ${VERSION} already published, skipping build (use force to override)."
           fi
           echo "build=$BUILD" >> "$GITHUB_OUTPUT"
 
