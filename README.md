@@ -1,33 +1,36 @@
-# Meshnet
-[![Discord](https://img.shields.io/discord/1013430695860908062?logo=discord&label=Discord&color=7289DA&logoColor=FFFFFF&style=for-the-badge)](https://discord.gg/v8Bwbnb3xe)
+# nordvpn-meshnet
 
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/MattsTechInfo/Meshnet?style=for-the-badge)](https://github.com/MattsTechInfo/Meshnet/releases) 
-[![GitHub](https://img.shields.io/github/license/MattsTechInfo/Meshnet?style=for-the-badge)](https://github.com/MattsTechInfo/Meshnet/blob/master/LICENSE) 
-![GitHub Workflow Status (with event)](https://img.shields.io/github/actions/workflow/status/MattsTechInfo/Meshnet/docker-image.yml?style=for-the-badge)
+[![GitHub](https://img.shields.io/github/license/nmbradley/nordvpn-meshnet?style=for-the-badge)](https://github.com/nmbradley/nordvpn-meshnet/blob/master/LICENSE)
+![GitHub Workflow Status (with event)](https://img.shields.io/github/actions/workflow/status/nmbradley/nordvpn-meshnet/docker-image.yml?style=for-the-badge)
 
-This (Docker) container provides the official NordVPN client configured for Meshnet VPN usage. Easily deploy fully configurable Meshnet nodes that automatically join your Meshnet network. This project is in not a supported/official container image by NordVPN and is in no way endorsed by the company NordVPN.
+This (Docker) container provides the official NordVPN client configured for Meshnet VPN usage. Easily deploy fully configurable Meshnet nodes that automatically join your Meshnet network. This project is not a supported/official container image by NordVPN and is in no way endorsed by the company NordVPN.
 
-> Note: I've created this container for my personal needs, which is to run Meshnet nodes at different locations to be used as outgoing gateways. If you have another use for this container, feel free to let me know or help add functionality if what you are trying to do doesn't work as expected. 
+This is a maintained fork of [MattsTechInfo/Meshnet](https://github.com/MattsTechInfo/Meshnet), which stopped receiving updates in 2024 and eventually could no longer log in. This fork removes the need for a human to remember to rebuild:
+
+- **Weekly check-then-build**: CI checks NordVPN's apt repository every week and publishes a new image whenever NordVPN ships a new Linux client.
+- **Monthly rebuild**: the image is rebuilt monthly regardless, to pick up base image security patches.
+- **Login smoke test**: every image must log in to NordVPN and join Meshnet in CI before it is published. An image that cannot authenticate never reaches `:latest`.
+- Images are tagged with the NordVPN client version they contain (e.g. `5.2.0`) plus `latest`.
+
+```
+docker pull ghcr.io/nmbradley/nordvpn-meshnet:latest
+```
 
 ## General Meshnet information
-Meshnet is a free self hosted VPN network connecting multiple nodes together. It's functionality, provided with the NordVPN application, is available on most platforms, including Android/Google TV. The usecases are extensive, the most popular ones are to access local data/network through Meshnet while having remote clients or setting up an exit node to route all client traffic through a single location.
+Meshnet is a free self hosted VPN network connecting multiple nodes together. Its functionality, provided with the NordVPN application, is available on most platforms, including Android/Google TV. The usecases are extensive, the most popular ones are to access local data/network through Meshnet while having remote clients or setting up an exit node to route all client traffic through a single location.
 Read more about Meshnet over here: https://meshnet.nordvpn.com/
 
 ## Installation and configuration
 Deploying this container is quite easy as it does not require specific ports to function as a gateway node, initial traffic is outgoing. Other uses may require different configurations.
 
 ### Preparations
-A (free) NordVPN is required to enable Meshnet and use the services.
+A (free) NordVPN account is required to enable Meshnet and use the services.
 This container requires an `Access token` to log on the NordVPN client. Follow the following steps to generate a new `Access token`:
 - Login to https://my.nordaccount.com/
-- Scroll down to "NordVPN Meshnet Free"
-- Click "View details"
-- Scroll down to "Manual setup"
-- Press the "Setup NordVPN manually" button
-- Enter the verification code from e-mail
+- Go to Services → NordVPN
 - Scroll down to "Access token"
 - Press the "Generate new token" button
-- Set the desired time to live
+- Choose "Doesn't expire" unless you want to rotate the token yourself
 
 ### iptables requirement
 The NordVPN client makes use of iptables to route and block traffic. The underlying host OS is required to have iptables libraries installed before this container can enable Meshnet. Next to the default iptables functionality, it also requires several iptables modules.
@@ -44,7 +47,7 @@ A `.env` file is supplied with the `docker-compose.yml` file for configuration p
 - `NORDVPN_NICKNAME`- Set a nickname for this device/instance on Meshnet, every peer will see and can use this nickname.
 
 #### Meshnet Permissions
-In this version of NordVPN, permissions must be configured directly on the client. NordVPN currently ALLOWS all peers connected to Meshnet by default for Fileshare and Remote access services and DENIES Routing and Local network services. Configuring peer permissions through the NordVPN account website is still in development and not currently available.
+Permissions are configured directly on the client. NordVPN currently ALLOWS all peers connected to Meshnet by default for Fileshare and Remote access services and DENIES Routing and Local network services.
 
 This container will run DENY configuration first, followed by ALLOW. ALLOW will overwrite the DENY! Entering a peer in both DENY and ALLOW will first DENY the peer and then overwrite it with an ALLOW.
 
@@ -58,15 +61,17 @@ Peers must be entered with their FQDN/Name assigned by Meshnet, comma separated,
 
 - `NORDVPN_ALLOW_PEER_ROUTING` - Allow peers to use this node as a router.
 - `NORDVPN_ALLOW_PEER_LOCAL` - Allow peers to access the local network of this node (ROUTING permissions required!).
-- `NORDVPN_ALLOW_PEER_FILESHARE` - Allow peers to  sharing files with this node.
-- `NORDVPN_ALLOW_PEER_REMOTE` = Allow peers to use remote access on this node.
+- `NORDVPN_ALLOW_PEER_FILESHARE` - Allow peers to share files with this node.
+- `NORDVPN_ALLOW_PEER_REMOTE` - Allow peers to use remote access on this node.
 
 ### Deployment - docker-compose
 An example `docker-compose.yml` has been supplied to easily deploy the Meshnet node. There is one specific piece of configuration, which is the `hostname`. Without configuring a `hostname`, every restart of the container will show as a new node within the Meshnet. Having a `hostname` configured will make sure the node is remembered/recognized.
 
 NordVPN and Meshnet functionality require permissions to create a tunnel interface within the container. The container will require both capabilities `NET_ADMIN` and `NET_RAW`.
 
-Make sure you have the `.env` file next to the `docker-compose.yml` and run `docker-compose up -d` to start the container. The node/peer should show up in your Meshnet within a few seconds.
+Make sure you have the `.env` file next to the `docker-compose.yml` and run `docker compose up -d` to start the container. The node/peer should show up in your Meshnet within a few seconds.
+
+The example compose file includes a [Watchtower](https://containrrr.dev/watchtower/) service that automatically pulls new images as they are published, so the node keeps working when NordVPN updates their client. It is scoped by label and will not touch other containers on the host. Remove the service if you prefer to update manually.
 
 ### Deployment - Kubernetes
 Kubernetes examples are supplied to easily deploy the Meshnet node on a Kubernetes cluster. There are two files, `meshnet-deployment.yaml` and `meshnet-env.yaml`. In the `meshnet-deployment.yaml`, please make sure the `hostname` is not empty. Without configuring a `hostname`, every restart of the container will show as a new node within the Meshnet. Having a `hostname` configured will make sure the node is remembered/recognized.
@@ -79,7 +84,7 @@ Make sure you have the `meshnet-env.yaml` file configured and run `kubectl apply
 Next to the default AMD64 platform this container is also built for ARM64. This will allow for easy deployment on Ampere based K8s nodes or VM's in, for example, the Free-Tier Oracle Cloud Infrastructure. At this moment, specific OKE images seem to miss some iptables modules, running `sudo modprobe iptable_filter` on your worker nodes will fix this.
 
 ## Synology
-A few users have had some problems with certain Synology devices as these do not come with the correct iptables modules, a manual will be added to the documentation when I have time to do this. For now, please join the Discord as the solution is posted to the support channel there.
+A few users have had some problems with certain Synology devices as these do not come with the correct iptables modules. The upstream project's [Discord](https://discord.gg/v8Bwbnb3xe) has the workaround posted in the support channel.
 
 ## Credits
-Starting this image has been based on the excellent work of https://github.com/bubuntux/nordvpn with their NordVPN client implementation in Docker.
+This image is a fork of [MattsTechInfo/Meshnet](https://github.com/MattsTechInfo/Meshnet) by Matts Bos, which in turn was based on the excellent work of https://github.com/bubuntux/nordvpn with their NordVPN client implementation in Docker.
