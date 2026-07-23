@@ -97,7 +97,7 @@ jobs:
 
           echo "Waiting for login and Meshnet to come up..."
           for i in $(seq 1 30); do
-            if docker exec smoke nordvpn account 2>/dev/null | grep -q 'Email address'; then
+            if docker exec smoke nordvpn meshnet peer list >/dev/null 2>&1; then
               break
             fi
             if [ "$(docker inspect -f '{{.State.Running}}' smoke)" != "true" ]; then
