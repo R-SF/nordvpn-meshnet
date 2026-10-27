@@ -2,7 +2,7 @@ FROM ghcr.io/linuxserver/baseimage-ubuntu:noble
 LABEL maintainer="nmbradley"
 
 # Configure the NordVPN client version to install at build (empty = latest)
-ARG NORDVPN_CLIENT_VERSION=
+ARG NORDVPN_CLIENT_VERSION=5.4.1
 
 # Avoid interactions during build process
 ARG DEBIAN_FRONTEND=noninteractive
