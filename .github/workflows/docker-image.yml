@@ -111,7 +111,7 @@ jobs:
 
           docker exec smoke nordvpn account | grep -q 'Email address' \
             || { echo 'Login failed'; docker logs smoke; exit 1; }
-          docker exec smoke nordvpn meshnet peer list \
+          docker exec smoke nordvpn meshnet peer list >/dev/null 2>&1 \
             || { echo 'Meshnet peer list failed'; docker logs smoke; exit 1; }
           echo "Smoke test passed: logged in and joined Meshnet."
 
