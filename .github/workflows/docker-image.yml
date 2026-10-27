@@ -152,7 +152,7 @@ jobs:
 
       - name: Deregister test device
         if: always()
-        run: docker exec smoke nordvpn logout --persist-token || true
+        run: docker exec smoke nordvpn logout || true
 
   build-push:
     runs-on: ubuntu-latest
