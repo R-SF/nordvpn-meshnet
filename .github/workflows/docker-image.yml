@@ -114,6 +114,13 @@ jobs:
           docker exec smoke nordvpn meshnet peer list >/dev/null 2>&1 \
             || { echo 'Meshnet peer list failed'; docker logs smoke; exit 1; }
           echo "Smoke test passed: logged in and joined Meshnet."
+          
+          KEY=$(docker exec smoke nordvpn meshnet peer list \
+            | awk '/^This device:/{f=1} f && /^Public Key:/{print $3; exit}')
+          
+          [ -n "$KEY" ] || { echo "Could not read this device's Meshnet key"; exit 1; }
+          
+          echo "MESHNET_PUBKEY=$KEY" >> "$GITHUB_ENV"
 
       - name: Restart with saved login (repeated logins)
         run: |
@@ -153,6 +160,38 @@ jobs:
       - name: Deregister test device
         if: always()
         run: docker exec smoke nordvpn logout || true
+
+      - name: Remove device from Meshnet via API
+        if: always()
+        env:
+          NORDVPN_TOKEN: ${{ secrets.NORDVPN_TOKEN }}
+        run: |
+          set -uo pipefail
+
+          [ -n "${MESHNET_PUBKEY:-}" ] || { echo "No key captured; nothing to remove"; exit 0; }
+
+          api=https://api.nordvpn.com/v1/meshnet/machines
+          basic=$(printf 'token:%s' "$NORDVPN_TOKEN" | base64 -w0)
+
+          for auth in "Authorization: Bearer token:${NORDVPN_TOKEN}" "Authorization: Basic ${basic}"; do
+            code=$(curl -s -o machines.json -w '%{http_code}' -H "$auth" "$api")
+            echo "list status: $code"
+            [ "$code" = 200 ] && break
+          done
+
+          [ "$code" = 200 ] || { echo "Could not list machines"; exit 0; }
+          
+          matches=$(jq -c --arg k "$MESHNET_PUBKEY" '[.[] | select(.public_key == $k)]' machines.json)
+          count=$(echo "$matches" | jq 'length')
+
+          if [ "$count" != 1 ]; then
+            echo "Expected exactly 1 machine with this key, found $count; deleting nothing"
+            exit 0
+          fi
+
+          echo "Deleting: $(echo "$matches" | jq -r '.[0] | "\(.hostname) (\(.identifier))"')"
+          id=$(echo "$matches" | jq -r '.[0].identifier')
+          echo "DELETE status: $(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$auth" "$api/$id")"
 
   build-push:
     runs-on: ubuntu-latest
