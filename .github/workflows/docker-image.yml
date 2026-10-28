@@ -167,7 +167,18 @@ jobs:
 
       - name: Deregister test device
         if: always()
-        run: docker exec smoke nordvpn logout || true
+        run: |
+          # Just in case something failed earlier and we weren't able to capture the key.
+          if [ -z "${MESHNET_PUBKEY:-}" ]; then
+            KEY=$(docker exec smoke nordvpn meshnet peer list 2>/dev/null \
+              | awk '/^This device:/{f=1} f && /^Public Key:/{print $3; exit}') || true
+            
+            if [ -n "${KEY:-}" ]; then
+              echo "::add-mask::$KEY"
+              echo "MESHNET_PUBKEY=$KEY" >> "$GITHUB_ENV"
+            fi
+          fi
+          docker exec smoke nordvpn logout || true
 
       - name: Remove device from Meshnet via API
         if: always()
@@ -201,6 +212,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [check, smoke-test]
     env:
+      # Keep the build record artifact for 7 days instead of the repo default
       DOCKER_BUILD_RECORD_RETENTION_DAYS: 7
 
     permissions:
