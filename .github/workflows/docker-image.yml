@@ -90,6 +90,9 @@ jobs:
           NORDVPN_TOKEN: ${{ secrets.NORDVPN_TOKEN }}
         run: |
           set -euo pipefail
+          
+          safe_logs() { docker logs "$@" 2>&1 | sed -E 's/[[:alnum:]._%+-]+@[[:alnum:].-]+/[email]/g'; }
+          
           # Stable hostname: every CI run shows up as this same Meshnet
           # device instead of registering a new random peer each time
           docker run -d --name smoke \
@@ -104,27 +107,30 @@ jobs:
               break
             fi
             if [ "$(docker inspect -f '{{.State.Running}}' smoke)" != "true" ]; then
-              echo "Container exited prematurely"; docker logs smoke; exit 1
+              echo "Container exited prematurely"; safe_logs --tail 50 smoke; exit 1
             fi
             sleep 5
           done
 
           docker exec smoke nordvpn account | grep -q 'Email address' \
-            || { echo 'Login failed'; docker logs smoke; exit 1; }
+            || { echo 'Login failed'; safe_logs --tail 50 smoke; exit 1; }
           docker exec smoke nordvpn meshnet peer list >/dev/null 2>&1 \
-            || { echo 'Meshnet peer list failed'; docker logs smoke; exit 1; }
+            || { echo 'Meshnet peer list failed'; safe_logs --tail 50 smoke; exit 1; }
           echo "Smoke test passed: logged in and joined Meshnet."
           
           KEY=$(docker exec smoke nordvpn meshnet peer list \
             | awk '/^This device:/{f=1} f && /^Public Key:/{print $3; exit}')
           
           [ -n "$KEY" ] || { echo "Could not read this device's Meshnet key"; exit 1; }
-          
+          echo "::add-mask::$KEY"
           echo "MESHNET_PUBKEY=$KEY" >> "$GITHUB_ENV"
 
       - name: Restart with saved login (repeated logins)
         run: |
           set -euo pipefail
+          
+          safe_logs() { docker logs "$@" 2>&1 | sed -E 's/[[:alnum:]._%+-]+@[[:alnum:].-]+/[email]/g'; }
+          
           # A real server keeps /var/lib/nordvpn between restarts, so every
           # restart starts with a saved login. `docker restart` keeps the
           # container's filesystem, which reproduces that. Do it twice so the
@@ -136,7 +142,7 @@ jobs:
             ok=false
             for i in $(seq 1 30); do
               if [ "$(docker inspect -f '{{.State.Running}}' smoke)" != "true" ]; then
-                echo "Container exited after restart ${round}"; docker logs --tail 50 smoke; exit 1
+                echo "Container exited after restart ${round}"; safe_logs --tail 50 smoke; exit 1
               fi
               if docker exec smoke nordvpn meshnet peer list >/dev/null 2>&1; then
                 ok=true; break
@@ -144,16 +150,16 @@ jobs:
               sleep 5
             done
             [ "$ok" = "true" ] \
-              || { echo "Meshnet did not come back after restart ${round}"; docker logs --tail 50 smoke; exit 1; }
+              || { echo "Meshnet did not come back after restart ${round}"; safe_logs --tail 50 smoke; exit 1; }
 
             # The daemon can answer for a moment before a failing login script
             # exits, so make sure the container is still up a little later.
             sleep 15
             [ "$(docker inspect -f '{{.State.Running}}' smoke)" = "true" ] \
-              || { echo "Container stopped after restart ${round}"; docker logs --tail 50 smoke; exit 1; }
+              || { echo "Container stopped after restart ${round}"; safe_logs --tail 50 smoke; exit 1; }
 
             docker exec smoke nordvpn account | grep -q 'Email address' \
-              || { echo "Not logged in after restart ${round}"; docker logs --tail 50 smoke; exit 1; }
+              || { echo "Not logged in after restart ${round}"; safe_logs --tail 50 smoke; exit 1; }
           done
           echo "Restart check passed: the saved login survives repeated restarts."
 
@@ -171,7 +177,9 @@ jobs:
           [ -n "${MESHNET_PUBKEY:-}" ] || { echo "No key captured; nothing to remove"; exit 0; }
 
           api=https://api.nordvpn.com/v1/meshnet/machines
+          
           basic=$(printf 'token:%s' "$NORDVPN_TOKEN" | base64 -w0)
+          echo "::add-mask::$basic"
 
           for auth in "Authorization: Bearer token:${NORDVPN_TOKEN}" "Authorization: Basic ${basic}"; do
             code=$(curl -s -o machines.json -w '%{http_code}' -H "$auth" "$api")
@@ -189,7 +197,7 @@ jobs:
             exit 0
           fi
 
-          echo "Deleting: $(echo "$matches" | jq -r '.[0] | "\(.hostname) (\(.identifier))"')"
+          echo "Deleting the CI device (1 match for this run's key)"
           id=$(echo "$matches" | jq -r '.[0].identifier')
           echo "DELETE status: $(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "$auth" "$api/$id")"
 
